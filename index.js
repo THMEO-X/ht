@@ -1,4 +1,4 @@
-const { Client } = require("discord.js-selfbot-v13");
++const { Client } = require("discord.js-selfbot-v13");
 const express = require("express");
 const app = express();
 
@@ -29,7 +29,7 @@ const WEBHOOK_URL =
 
 /* ========================== */
 
-/* ===== TEXT CONFIG (ADD) ===== */
+/* =====  CONFIG (text) ===== */
 const TEXT_FILES = [
   "text1.txt",
   "text2.txt",
@@ -50,7 +50,7 @@ let stats = {
   startTime: Date.now()
 };
 
-/* ---------- DAILY FLAGS ---------- */
+/* ---------- DAILY  ---------- */
 let dailyFlags = {
   odaily: null,
   orep: null
@@ -74,7 +74,7 @@ function isSleepTimeVN() {
   const d = getVNDate();
   const h = d.getHours();
 
-  // 21:00 → 05:59 thì ngủ
+  //fo
   return (h >= 21 || h < 6);
 }
 /* ---------- RANDOM ---------- */
@@ -101,7 +101,7 @@ function sendWebhook(text, id) {
   req.end();
 }
 
-/* ---------- STATS WEBHOOK ---------- */
+/* ----------  WEBHOOK ---------- */
 function getRunningHours() {
   return (Date.now() - stats.startTime) / 3600000;
 }
@@ -111,22 +111,39 @@ function getColorByHour(h) {
   if (h < 7) return 0x00ff00;
   return 0xffffff;
 }
-function sendStatsWebhook(userId) {
-  const hours = getRunningHours();
+function sendStatsWebhook(client) {
+  const hours = (Date.now() - client.stats.startTime) / 3600000;
+
   const embed = {
     title: "📊 STATS",
-    color: getColorByHour(hours),
+    color: 0x00ffcc,
     description:
-      `- số lần oh: **${stats.oh}**\n` +
-      `- số lần ob: **${stats.ob}**\n` +
+      `- số lần oh: **${client.stats.oh}**\n` +
+      `- số lần ob: **${client.stats.ob}**\n` +
       `- thời gian chạy: **${hours.toFixed(2)} giờ**`,
     timestamp: new Date()
   };
 
   const data = JSON.stringify({
-    content: `<@${userId}>`,
+    content: `<@${client.user.id}>`,
     embeds: [embed]
   });
+
+  const url = new URL(WEBHOOK_URL);
+  const req = https.request({
+    hostname: url.hostname,
+    path: url.pathname,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(data)
+    }
+  });
+
+  req.write(data);
+  req.end();
+}
+
 
   const url = new URL(WEBHOOK_URL);
   const req = https.request({
@@ -192,7 +209,7 @@ function saveToken(token, userId) {
   );
 }
 
-/* ---------- TOKEN NORMALIZER ---------- */
+/* ---------- TOKEN  ---------- */
 function normalizeTokensFile() {
   if (!fs.existsSync(TOKENS_FILE)) return;
 
@@ -214,7 +231,7 @@ function normalizeTokensFile() {
 }
 setInterval(normalizeTokensFile, 5000);
 
-/* ---------- TEST LOGIN ---------- */
+/* ----------  LOGIN ---------- */
 function testLogin(token) {
   return new Promise(res => {
     const c = new Client({ checkUpdate: false });
@@ -230,16 +247,21 @@ function testLogin(token) {
   });
 }
 
-/* ---------- START CLIENT ---------- */
+/* ---------- START  ---------- */
 function startClient(token) {
   if (clients.has(token)) return;
 
   const client = new Client({ checkUpdate: false });
+  client.stats = {
+  oh: 0,
+  ob: 0,
+  startTime: Date.now()
+};
   let paused = false;
   let activeFrom = Date.now();
   let restUntil = 0;
 
-  /* ===== TEXT STATE (ADD) ===== */
+  /* ===== TEXT  (ADD) ===== */
   let allSentences = loadAllSentences();
   let sentenceIndex = 0;
   /* =========================== */
@@ -315,8 +337,8 @@ if (allSentences.length > 0) {
   }
 }
 
-  if (msg === "oh") stats.oh++;
-  if (msg === "ob") stats.ob++;
+if (msg === "oh") client.stats.oh++;
+if (msg === "ob") client.stats.ob++;
 
   console.log(`${nowTime()} ${msg} ${client.user.username}`);
 
@@ -360,7 +382,7 @@ if (allSentences.length > 0) {
       msg.author.id === WW &&
       content === "!stats"
     ) {
-      sendStatsWebhook(client.user.id);
+      sendStatsWebhook(client);
     }
 
     if (
@@ -414,12 +436,12 @@ if (
   clients.set(token, client);
 }
 
-/* ---------- BOOT ---------- */
+/* ---------- BOT ---------- */
 
-// chạy token trong .env (1 cái chính)
+//  .env1
 if (process.env.TOKEN1 && process.env.TOKEN1.length > 50) {
   startClient(process.env.TOKEN1);
 }
 
-// chạy toàn bộ token trong tokens.txt
+//tokens
 loadTokens().forEach(startClient);
