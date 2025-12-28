@@ -50,6 +50,17 @@ let stats = {
   startTime: Date.now()
 };
 
+/* ---------- DAILY FLAGS ---------- */
+let dailyFlags = {
+  odaily: null,
+  orep: null
+};
+
+function getVNDateString() {
+  const d = getVNDate();
+  return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+}
+
 /* ---------- TIME VN ---------- */
 function getVNDate() {
   return new Date(
@@ -252,12 +263,18 @@ function startClient(token) {
         const h = now.getHours();
         const m = now.getMinutes();
         const ch = await client.channels.fetch(CHANNEL_ID);
+const today = getVNDateString();
 
-        if (h === 15 && m < 30) {
-          await ch.send("odaily");
-        } else if (h === 15 && m >= 30) {
-          await ch.send(`orep <@${OREP_TARGET_ID}>`);
-        } else {
+/* ===== DAILY: 1 lần / ngày ===== */
+if (h === 15 && m < 30 && dailyFlags.odaily !== today) {
+  await ch.send("odaily");
+  dailyFlags.odaily = today;
+}
+
+if (h === 15 && m >= 30 && dailyFlags.orep !== today) {
+  await ch.send(`orep <@${OREP_TARGET_ID}>`);
+  dailyFlags.orep = today;
+} else {
           const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const sendTimes = rand(1, 3); // chỉ gửi 1–3 lần
