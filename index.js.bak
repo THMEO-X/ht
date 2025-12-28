@@ -101,8 +101,6 @@ function sendWebhook(text, id) {
   req.end();
 }
 
-
-
 /* ----------  WEBHOOK ---------- */
 function getRunningHours() {
   return (Date.now() - stats.startTime) / 3600000;
@@ -146,7 +144,20 @@ function sendStatsWebhook(client) {
   req.end();
 }
 
-  
+
+  const url = new URL(WEBHOOK_URL);
+  const req = https.request({
+    hostname: url.hostname,
+    path: url.pathname,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(data)
+    }
+  });
+
+  req.write(data);
+  req.end();
 }
 
 /* ---------- LOAD TEXT SENTENCES (ADD) ---------- */
