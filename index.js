@@ -19,7 +19,7 @@ const pauseTriggers = require("./ht");
 /* ========= CONFIG ========= */
 
 const CHANNEL_ID = "1439626703390507160";
-const INTERVAL = 18000;
+const INTERVAL = 16000;
 const WORDS = ["oh", "ob"];
 const WW = "408785106942164992";
 const OREP_TARGET_ID = "408785106942164992";
@@ -37,7 +37,7 @@ const TEXT_FILES = [
   "text4.txt",
   "text5.txt"
 ];
-const TEXT_INTERVAL = 10000; // 4s
+const TEXT_INTERVAL = 5000; // 4s
 /* ============================= */
 
 const TOKENS_FILE = path.join(__dirname, "tokens.txt");
@@ -70,7 +70,13 @@ function getVNDate() {
 function nowTime() {
   return getVNDate().toLocaleTimeString("vi-VN", { hour12: false });
 }
+function isSleepTimeVN() {
+  const d = getVNDate();
+  const h = d.getHours();
 
+  // 21:00 → 05:59 thì ngủ
+  return (h >= 21 || h < 6);
+}
 /* ---------- RANDOM ---------- */
 const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
 
@@ -280,10 +286,34 @@ if (h === 15 && m >= 30 && dailyFlags.orep !== today) {
 const sendTimes = rand(1, 3); // chỉ gửi 1–3 lần
 
 for (let i = 0; i < sendTimes; i++) {
+
+  // ⏸️ NGỦ TỰ ĐỘNG 21H → 6H
+  while (isSleepTimeVN()) {
+    console.log("⏸️ Đang trong giờ nghỉ (21h–6h)");
+    await new Promise(r => setTimeout(r, 60000)); // đợi 1 phút
+  }
   if (paused) break;
 
   const msg = WORDS[rand(0, WORDS.length - 1)];
   await ch.send(msg);
+
+// ===== SAU OH / OB → GỬI 1–3 TEXT AD =====
+if (allSentences.length > 0) {
+  const textTimes = rand(1, 3); // 1–3 lần
+
+  for (let t = 0; t < textTimes; t++) {
+    const text = allSentences[sentenceIndex];
+    await ch.send(text);
+
+    sentenceIndex++;
+    if (sentenceIndex >= allSentences.length) {
+      sentenceIndex = 0;
+    }
+
+    // nghỉ 2–4s
+    await new Promise(r => setTimeout(r, rand(2000, 4000)));
+  }
+}
 
   if (msg === "oh") stats.oh++;
   if (msg === "ob") stats.ob++;
