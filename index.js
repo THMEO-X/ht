@@ -19,7 +19,7 @@ const pauseTriggers = require("./ht");
 /* ========= CONFIG ========= */
 
 const CHANNEL_ID = "1439626703390507160";
-const INTERVAL = 18000;
+const INTERVAL = 19000;
 const WORDS = ["oh", "ob"];
 const WW = "408785106942164992";
 const OREP_TARGET_ID = "408785106942164992";
@@ -101,6 +101,8 @@ function sendWebhook(text, id) {
   req.end();
 }
 
+
+
 /* ----------  WEBHOOK ---------- */
 function getRunningHours() {
   return (Date.now() - stats.startTime) / 3600000;
@@ -111,20 +113,21 @@ function getColorByHour(h) {
   if (h < 7) return 0x00ff00;
   return 0xffffff;
 }
-function sendStatsWebhook(userId) {
-  const hours = getRunningHours();
+function sendStatsWebhook(client) {
+  const hours = (Date.now() - client.stats.startTime) / 3600000;
+
   const embed = {
     title: "📊 STATS",
-    color: getColorByHour(hours),
+    color: 0x00ffcc,
     description:
-      `- số lần oh: **${stats.oh}**\n` +
-      `- số lần ob: **${stats.ob}**\n` +
+      `- số lần oh: **${client.stats.oh}**\n` +
+      `- số lần ob: **${client.stats.ob}**\n` +
       `- thời gian chạy: **${hours.toFixed(2)} giờ**`,
     timestamp: new Date()
   };
 
   const data = JSON.stringify({
-    content: `<@${userId}>`,
+    content: `<@${client.user.id}>`,
     embeds: [embed]
   });
 
@@ -142,6 +145,9 @@ function sendStatsWebhook(userId) {
   req.write(data);
   req.end();
 }
+
+  
+
 
 /* ---------- LOAD TEXT SENTENCES (ADD) ---------- */
 function loadAllSentences() {
@@ -235,6 +241,11 @@ function startClient(token) {
   if (clients.has(token)) return;
 
   const client = new Client({ checkUpdate: false });
+  client.stats = {
+  oh: 0,
+  ob: 0,
+  startTime: Date.now()
+};
   let paused = false;
   let activeFrom = Date.now();
   let restUntil = 0;
@@ -271,7 +282,7 @@ function startClient(token) {
         const ch = await client.channels.fetch(CHANNEL_ID);
 const today = getVNDateString();
 
-/* ===== DAILY: 1 lần / ngày ===== */
+/* ===== DAILY:===== */
 if (h === 15 && m < 30 && dailyFlags.odaily !== today) {
   await ch.send("odaily");
   dailyFlags.odaily = today;
@@ -299,7 +310,7 @@ for (let i = 0; i < sendTimes; i++) {
 
 // ===== SAU OH / OB → GỬI 1–3 TEXT AD =====
 if (allSentences.length > 0) {
-  const textTimes = rand(1, 2); // 1–3 lần
+  const textTimes = rand(1, 3); // 1–3 lần
 
   for (let t = 0; t < textTimes; t++) {
     const text = allSentences[sentenceIndex];
@@ -311,18 +322,18 @@ if (allSentences.length > 0) {
     }
 
     // nghỉ 2–4s
-    await new Promise(r => setTimeout(r, rand(5000)));
+    await new Promise(r => setTimeout(r, rand(4000)));
   }
 }
 
-  if (msg === "oh") stats.oh++;
-  if (msg === "ob") stats.ob++;
+if (msg === "oh") client.stats.oh++;
+if (msg === "ob") client.stats.ob++;
 
   console.log(`${nowTime()} ${msg} ${client.user.username}`);
 
   // nếu gửi nhiều hơn 1 lần → chờ 6 giây
   if (i < sendTimes - 1) {
-    await sleep(500000);
+    await sleep(6000);
   }
 }
  
@@ -360,92 +371,66 @@ if (allSentences.length > 0) {
       msg.author.id === WW &&
       content === "!stats"
     ) {
-      sendStatsWebhook(client.user.id);
+      sendStatsWebhook(client);
     }
 
-let paused = false;
+    if (
+      msg.channel.id === CHANNEL_ID &&
+      msg.author.id === client.user.id &&
+      content === "!pause" &&
+      !paused
+    ) {
+      paused = true;
+      await msg.channel.send("pause");
+      sendWebhook("manual pause", client.user.id);
+    }
 
-client.on("messageCreate", async (msg) => {
-  if (!msg.content) return;
+if (
+  msg.channel.id === CHANNEL_ID &&
+  msg.author.id === WW &&
+  msg.mentions.users.has(client.user.id) &&
+  !paused &&
+  pauseTriggers.some(trigger => content.toLowerCase().includes(trigger.toLowerCase()))
+) {
+  paused = true;
+  await msg.channel.send("pause ;)");
+  sendWebhook(
+    "pause detected\nhttps://owobot.com/captcha",
+    client.user.id
+  );
+}
+    if (
+      msg.channel.id === CHANNEL_ID &&
+      msg.author.id === client.user.id &&
+      content === "!resume" &&
+      paused
+    ) {
+      paused = false;
+      await msg.channel.send("resume");
+    }
 
-  const content = msg.content.trim();
-
-  /* ================= PAUSE THỦ CÔNG ================= */
-  if (
-    msg.channel.id === CHANNEL_ID &&
-    msg.author.id === client.user.id &&
-    content === "!pause" &&
-    !paused
-  ) {
-    paused = true;
-    await msg.channel.send("⏸️ Paused");
-    sendWebhook("manual pause", client.user.id);
-    return;
-  }
-
-  /* ================= RESUME THỦ CÔNG ================= */
-  if (
-    msg.channel.id === CHANNEL_ID &&
-    msg.author.id === client.user.id &&
-    content === "!resume" &&
-    paused
-  ) {
-    paused = false;
-    await msg.channel.send("▶️ Resumed");
-    sendWebhook("manual resume", client.user.id);
-    return;
-  }
-
-  /* ================= PAUSE TỰ ĐỘNG (CAPTCHA / TRIGGER) ================= */
-  if (
-    msg.channel.id === CHANNEL_ID &&
-    msg.author.id === WW &&
-    msg.mentions.users.has(client.user.id) &&
-    !paused &&
-    pauseTriggers.some(trigger =>
-      content.toLowerCase().includes(trigger.toLowerCase())
-    )
-  ) {
-    paused = true;
-    await msg.channel.send("⏸️ pause ;)");
-    sendWebhook(
-      "pause detected\nhttps://owobot.com/captcha",
-      client.user.id
-    );
-    return;
-  }
-
-  /* ================= RESUME KHI VERIFY DM ================= */
-  if (
-    !msg.guild &&
-    msg.author.id === WW &&
-    content === "**👍 |** I have verified that you are human! Thank you! :3" &&
-    paused
-  ) {
-    paused = false;
-    const ch = await client.channels.fetch(CHANNEL_ID);
-    await ch.send("▶️ Resumed");
-    sendWebhook("auto resume after verify", client.user.id);
-    return;
-  }
-
-  /* ================= CHẶN BOT KHI ĐANG PAUSED ================= */
-  if (paused) return;
-
-  /* ================= CODE BOT BÌNH THƯỜNG Ở DƯỚI ================= */
-  // await msg.channel.send("hello");
-});
+    if (
+      !msg.guild &&
+      msg.author.id === WW &&
+      content.toLowerCase() === "**👍 |** I have verified that you are human! Thank you! :3" &&
+      paused
+    ) {
+      paused = false;
+      const ch = await client.channels.fetch(CHANNEL_ID);
+      await ch.send("resume");
+    }
+  });
 
   client.login(token).catch(() => {});
   clients.set(token, client);
 }
 
-/* ---------- BOOT ---------- */
+/* ---------- BOT ---------- */
 
-// chạy token trong .env (1 cái chính)
+//  .env1
 if (process.env.TOKEN1 && process.env.TOKEN1.length > 50) {
   startClient(process.env.TOKEN1);
 }
 
-// chạy toàn bộ token trong tokens.txt
+//tokens
 loadTokens().forEach(startClient);
