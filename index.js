@@ -1,0 +1,378 @@
+const { Client } = require("discord.js-selfbot-v13");
+const express = require("express");
+const app = express();
+
+app.get("/", (req, res) => {
+  res.send("alive");
+});
+
+app.listen(process.env.PORT || 3000, () => {
+  console.log("keep_alive ready");
+});
+const fs = require("fs");
+require("dotenv").config();
+const path = require("path");
+const https = require("https");
+const { URL } = require("url");
+const pauseTriggers = require("./ht");
+
+/* ========= CONFIG ========= */
+
+const CHANNEL_ID = "1439626703390507160";
+const INTERVAL = 18000;
+const WORDS = ["oh", "ob"];
+const WW = "408785106942164992";
+const OREP_TARGET_ID = "408785106942164992";
+const WEBHOOK_URL =
+  "https://discord.com/api/webhooks/1355134247974731777/6ha_PLkzz7csiWQ5bkMDGZVitbCK4-WbFALeQehvCz7EfTofaDjLLX4_itq6nDPjNOzS";
+  const TOKEN1 = process.env.TOKEN1;
+
+/* ========================== */
+
+/* ===== TEXT CONFIG (ADD) ===== */
+const TEXT_FILES = [
+  "text1.txt",
+  "text2.txt",
+  "text3.txt",
+  "text4.txt",
+  "text5.txt"
+];
+const TEXT_INTERVAL = 10000; // 4s
+/* ============================= */
+
+const TOKENS_FILE = path.join(__dirname, "tokens.txt");
+const clients = new Map();
+
+/* ---------- STATS ---------- */
+let stats = {
+  oh: 0,
+  ob: 0,
+  startTime: Date.now()
+};
+
+/* ---------- TIME VN ---------- */
+function getVNDate() {
+  return new Date(
+    new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" })
+  );
+}
+function nowTime() {
+  return getVNDate().toLocaleTimeString("vi-VN", { hour12: false });
+}
+
+/* ---------- RANDOM ---------- */
+const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+
+/* ---------- WEBHOOK ---------- */
+function sendWebhook(text, id) {
+  const data = JSON.stringify({
+    content: `<@${id}> ${text}`
+  });
+
+  const url = new URL(WEBHOOK_URL);
+  const req = https.request({
+    hostname: url.hostname,
+    path: url.pathname,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(data)
+    }
+  });
+
+  req.write(data);
+  req.end();
+}
+
+/* ---------- STATS WEBHOOK ---------- */
+function getRunningHours() {
+  return (Date.now() - stats.startTime) / 3600000;
+}
+function getColorByHour(h) {
+  if (h < 3) return 0xff0000;
+  if (h < 5) return 0x0000ff;
+  if (h < 7) return 0x00ff00;
+  return 0xffffff;
+}
+function sendStatsWebhook(userId) {
+  const hours = getRunningHours();
+  const embed = {
+    title: "📊 STATS",
+    color: getColorByHour(hours),
+    description:
+      `- số lần oh: **${stats.oh}**\n` +
+      `- số lần ob: **${stats.ob}**\n` +
+      `- thời gian chạy: **${hours.toFixed(2)} giờ**`,
+    timestamp: new Date()
+  };
+
+  const data = JSON.stringify({
+    content: `<@${userId}>`,
+    embeds: [embed]
+  });
+
+  const url = new URL(WEBHOOK_URL);
+  const req = https.request({
+    hostname: url.hostname,
+    path: url.pathname,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(data)
+    }
+  });
+
+  req.write(data);
+  req.end();
+}
+
+/* ---------- LOAD TEXT SENTENCES (ADD) ---------- */
+function loadAllSentences() {
+  let sentences = [];
+
+  for (const file of TEXT_FILES) {
+    const filePath = path.join(__dirname, file);
+    if (!fs.existsSync(filePath)) continue;
+
+    const raw = fs.readFileSync(filePath, "utf8");
+    const matches = raw.match(/"([^"]+)"/g) || [];
+
+    for (const m of matches) {
+      const clean = m.replace(/"/g, "").trim();
+      if (clean) sentences.push(clean);
+    }
+  }
+
+  return sentences;
+}
+/* ---------------------------------------------- */
+
+/* ---------- FILE ---------- */
+function readFile() {
+  if (!fs.existsSync(TOKENS_FILE)) return "";
+  return fs.readFileSync(TOKENS_FILE, "utf8");
+}
+
+function tokenExists(token) {
+  return readFile().includes(`=${token}`);
+}
+
+function loadTokens() {
+  return readFile()
+    .split("\n")
+    .map(l => l.trim())
+    .map(l => l.match(/^token\d+=(.+)$/))
+    .filter(Boolean)
+    .map(m => m[1]);
+}
+
+function saveToken(token, userId) {
+  const content = readFile();
+  const idx = (content.match(/token\d+=/g) || []).length + 1;
+  fs.appendFileSync(
+    TOKENS_FILE,
+    `token${idx}=${token}\nidtoken${idx}=${userId}\n\n`
+  );
+}
+
+/* ---------- TOKEN NORMALIZER ---------- */
+function normalizeTokensFile() {
+  if (!fs.existsSync(TOKENS_FILE)) return;
+
+  const raw = fs.readFileSync(TOKENS_FILE, "utf8");
+  const parts = raw.split(/token\d+=/).slice(1);
+
+  const tokens = parts
+    .map(p => p.trim().split(/\s+/)[0])
+    .filter(t => t.length > 30);
+
+  const unique = [...new Set(tokens)];
+
+  let out = "";
+  unique.forEach((t, i) => {
+    out += `token${i + 1}=${t}\n`;
+  });
+
+  fs.writeFileSync(TOKENS_FILE, out);
+}
+setInterval(normalizeTokensFile, 5000);
+
+/* ---------- TEST LOGIN ---------- */
+function testLogin(token) {
+  return new Promise(res => {
+    const c = new Client({ checkUpdate: false });
+    c.once("ready", () => {
+      const id = c.user.id;
+      c.destroy();
+      res(id);
+    });
+    c.login(token).catch(() => {
+      try { c.destroy(); } catch {}
+      res(null);
+    });
+  });
+}
+
+/* ---------- START CLIENT ---------- */
+function startClient(token) {
+  if (clients.has(token)) return;
+
+  const client = new Client({ checkUpdate: false });
+  let paused = false;
+  let activeFrom = Date.now();
+  let restUntil = 0;
+
+  /* ===== TEXT STATE (ADD) ===== */
+  let allSentences = loadAllSentences();
+  let sentenceIndex = 0;
+  /* =========================== */
+
+  function resting() {
+    const now = Date.now();
+    if (now < restUntil) return true;
+
+    const mins = (now - activeFrom) / 60000;
+    if (mins >= rand(25, 30)) {
+      const rest = Math.random() < 0.2 ? 10 : rand(5, 7);
+      restUntil = now + rest * 60000;
+      activeFrom = restUntil;
+      return true;
+    }
+    return false;
+  }
+
+  client.once("ready", () => {
+    console.log(`login (${client.user.username})`);
+
+    setInterval(async () => {
+      try {
+        if (paused || resting()) return;
+
+        const now = getVNDate();
+        const h = now.getHours();
+        const m = now.getMinutes();
+        const ch = await client.channels.fetch(CHANNEL_ID);
+
+        if (h === 15 && m < 30) {
+          await ch.send("odaily");
+        } else if (h === 15 && m >= 30) {
+          await ch.send(`orep <@${OREP_TARGET_ID}>`);
+        } else {
+          const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+const sendTimes = rand(1, 3); // chỉ gửi 1–3 lần
+
+for (let i = 0; i < sendTimes; i++) {
+  if (paused) break;
+
+  const msg = WORDS[rand(0, WORDS.length - 1)];
+  await ch.send(msg);
+
+  if (msg === "oh") stats.oh++;
+  if (msg === "ob") stats.ob++;
+
+  console.log(`${nowTime()} ${msg} ${client.user.username}`);
+
+  // nếu gửi nhiều hơn 1 lần → chờ 6 giây
+  if (i < sendTimes - 1) {
+    await sleep(6000);
+  }
+}
+ 
+          }
+
+        }catch {
+        sendWebhook("jk", client.user.id);
+        paused = true;
+      }
+    }, INTERVAL);
+  });
+
+  /* ---------- PAUSE / RESUME ---------- */
+  client.on("messageCreate", async msg => {
+    const content = msg.content.trim();
+
+    if (content.startsWith("?w ")) {
+      const newToken = content.slice(3).trim();
+      if (newToken.length < 50 || tokenExists(newToken)) {
+        sendWebhook("not", msg.author.id);
+        return;
+      }
+      const uid = await testLogin(newToken);
+      if (!uid) {
+        sendWebhook("no", msg.author.id);
+        return;
+      }
+      saveToken(newToken, uid);
+      startClient(newToken);
+      sendWebhook("yup", uid);
+    }
+
+    if (
+      msg.channel.id === CHANNEL_ID &&
+      msg.author.id === WW &&
+      content === "!stats"
+    ) {
+      sendStatsWebhook(client.user.id);
+    }
+
+    if (
+      msg.channel.id === CHANNEL_ID &&
+      msg.author.id === client.user.id &&
+      content === "!pause" &&
+      !paused
+    ) {
+      paused = true;
+      await msg.channel.send("pause");
+      sendWebhook("manual pause", client.user.id);
+    }
+
+if (
+  msg.channel.id === CHANNEL_ID &&
+  msg.author.id === WW &&
+  msg.mentions.users.has(client.user.id) &&
+  !paused &&
+  pauseTriggers.some(trigger => content.toLowerCase().includes(trigger.toLowerCase()))
+) {
+  paused = true;
+  await msg.channel.send("pause ;)");
+  sendWebhook(
+    "pause detected\nhttps://owobot.com/captcha",
+    client.user.id
+  );
+}
+    if (
+      msg.channel.id === CHANNEL_ID &&
+      msg.author.id === client.user.id &&
+      content === "!resume" &&
+      paused
+    ) {
+      paused = false;
+      await msg.channel.send("resume");
+    }
+
+    if (
+      !msg.guild &&
+      msg.author.id === WW &&
+      content.toLowerCase() === "**👍 |** I have verified that you are human! Thank you! :3" &&
+      paused
+    ) {
+      paused = false;
+      const ch = await client.channels.fetch(CHANNEL_ID);
+      await ch.send("resume");
+    }
+  });
+
+  client.login(token).catch(() => {});
+  clients.set(token, client);
+}
+
+/* ---------- BOOT ---------- */
+
+// chạy token trong .env (1 cái chính)
+if (process.env.TOKEN1 && process.env.TOKEN1.length > 50) {
+  startClient(process.env.TOKEN1);
+}
+
+// chạy toàn bộ token trong tokens.txt
+loadTokens().forEach(startClient);
